@@ -1,4 +1,4 @@
-"""STREGO: Surrogate TRust-region Efficient Global Optimization.
+"""STREGO: Scalable Efficient Global Optimization.
 
 STREGO runs a trust-region loop (see :mod:`strego.trust_region`) whose two
 phases are both GP-driven, but which are deliberately given different jobs:
@@ -12,14 +12,9 @@ small batch (3 by default). This phase is where exploration happens, and it is
 
 **Local phase** -- only runs when the global batch failed to improve
 sufficiently. Collect the observations inside the trust region, relaxing the
-region until it holds at least ``n_min`` of them, fit the same GP class on that
+region until it holds at least ``n_min`` data points, fit an independant GP on that
 local design, and minimize the posterior mean inside the (unrelaxed) trust
 region. Pure exploitation, because the global phase already covered exploration.
-
-The trust region therefore controls only the *local* phase's extent, while the
-global phase always sees the full domain. That is what keeps STREGO from
-stalling in a collapsed region: even at tiny ``sigma_k``, the global phase can
-still propose anywhere, and a global success re-centres and re-expands the region.
 
 Example
 -------
@@ -32,9 +27,8 @@ Example
 ...     budget=120,
 ... )
 >>> result = opt.run()
->>> result.best_y < 1.0
-True
-"""
+>>> print(result.best_y)"""
+
 
 from __future__ import annotations
 
@@ -49,7 +43,7 @@ from botorch.optim import optimize_acqf
 from scipy.stats import qmc
 from torch.quasirandom import SobolEngine
 
-from .acquisition import qNegativePosteriorMean
+from .acquisition import NegativePosteriorMean
 from .models import fit_gp
 from .selection import select_batch, solve_biobjective
 from .trust_region import OptimizationResult, TrustRegionBO
@@ -63,16 +57,12 @@ from .utils import (
     unique_rows_tol,
 )
 
-# Every default, in one place. The command-line scripts read their defaults
-# from here, so changing a value below changes it everywhere.
 DEFAULTS: dict = {
     "n_init": 10,
     "global_batch_size": 3,
     "min_local_points": 10,
     "relaxation_step": 0.5,
     "candidate_pool_size": 250,
-    # Local acquisition optimizer. None = scale with the dimension, see
-    # default_num_restarts / default_raw_samples below.
     "local_num_restarts": None,
     "local_raw_samples": None,
     "objective_pair": "MU_IVR",
@@ -84,32 +74,20 @@ DEFAULTS: dict = {
     "d_max": 1.0,
 }
 
-
+#Default values used in the article
 def default_num_restarts(dim: int) -> int:
-    """Multi-start restarts for the local acquisition: ``2d + 4``.
-
-    Grows linearly with the dimension, since the number of local optima of the
-    posterior mean inside the trust region grows with it.
-    """
+    """Multi-start restarts for the local acquisition: ``2d + 4``(This is the default value for the article. Recommend lowering for test)"""
     return 2 * dim + 4
 
 
 def default_raw_samples(dim: int) -> int:
-    """Prescreen pool for the local acquisition: ``(2d + 4)^2``.
-
-    The square of the restart count, so the warm starts are always the top
-    ``1 / (2d + 4)`` of the pool -- a fixed selectivity at every dimension.
-    """
+    """Prescreen pool for the local acquisition: ``(2d + 4)^2``(This is the default value for the article. Recommend lowering for test)."""
     return (2 * dim + 4) ** 2
 
 
 def default_sigma_0(dim: int) -> float:
-    """Initial radius: ``0.5 * (1/5)^(1/d)``.
+    """Initial radius: ``0.5 * (1/5)^(1/d)``."""
 
-    The trust region covers a fixed *fraction* of the box volume regardless of
-    dimension, rather than a fixed side length -- at d = 100 a fixed side length
-    would be either the whole box or a speck.
-    """
     return 0.5 * ((1.0 / 5.0) ** (1.0 / dim))
 
 
@@ -126,8 +104,7 @@ class STREGO(TrustRegionBO):
     n_init : int
         Size of the initial Latin-hypercube design.
     global_batch_size : int
-        Points drawn from the Pareto front per global phase. 3 by default: enough
-        to span the trade-off, cheap enough to re-fit often.
+        Points drawn from the Pareto front per global phase. 3 by default.
     min_local_points : int
         ``n_min``: the minimum size of the local design the local GP is fitted
         on. If the trust region holds fewer observations, it is relaxed until
@@ -140,11 +117,9 @@ class STREGO(TrustRegionBO):
     local_num_restarts, local_raw_samples : int, optional
         Local acquisition optimizer: a Sobol pool of ``local_raw_samples``
         points is scored and the best ``local_num_restarts`` seed L-BFGS.
-        Default ``2d + 4`` and ``(2d + 4)^2``. Used exactly as given, with no
-        floor or cap.
+        Default ``2d + 4`` and ``(2d + 4)^2``. 
     candidate_pool_size : int
-        Sobol pool seeding NSMA. Raised to ``8 * d`` when that is larger, so
-        high-dimensional runs keep adequate coverage.
+        Sobol pool seeding NSMA. Default ``8 * d``.
     objective_pair : {"MU_IVR", "MU_SIGMA"}
         Global-phase bi-objective. See :mod:`strego.biobjective`.
     doe_points, doe_values : optional
@@ -194,11 +169,9 @@ class STREGO(TrustRegionBO):
             raise ValueError("lower_bounds must be <= upper_bounds")
         if budget < n_init:
             raise ValueError("budget must be >= n_init")
-        # n_min <= n_init guarantees the relaxation terminates with a local design
-        # of at least n_min points: at worst the box grows to the whole domain,
-        # which contains the full initial design.
         if not 2 <= min_local_points <= n_init:
-            raise ValueError("min_local_points must satisfy 2 <= min_local_points <= n_init")
+            raise ValueError("min_local_points must satisfy 2 <= min_local_points <= n_init.")
+        # The incrementation value of the relaxation factor    
         if relaxation_step <= 0.0:
             raise ValueError("relaxation_step must be > 0")
 
@@ -208,9 +181,6 @@ class STREGO(TrustRegionBO):
         self.min_local_points = int(min_local_points)
         self.relaxation_step = float(relaxation_step)
         self.candidate_pool_size = max(int(candidate_pool_size), 8 * self.dim)
-        # Used exactly as given (or as the dimension-scaled default): no floor,
-        # no cap. The one hard requirement is that the prescreen pool can
-        # supply every warm start.
         self.local_num_restarts = (
             default_num_restarts(self.dim) if local_num_restarts is None else int(local_num_restarts)
         )
@@ -225,7 +195,6 @@ class STREGO(TrustRegionBO):
         self.ivr_integration_points = int(ivr_integration_points)
         self.seed = int(seed)
 
-        # Observation store. Every evaluation lands here, in raw problem coords.
         self.X_obs: list[np.ndarray] = []
         self.y_obs: list[float] = []
         self.best_y = float("inf")
@@ -237,8 +206,6 @@ class STREGO(TrustRegionBO):
             self._open_log(log_path)
         self.log_path = log_path
 
-        # Build the initial design *before* super().__init__, which needs the
-        # starting incumbent (x_0, f_0) that the design produces.
         x_0, f_0 = self._initial_doe(doe_points, doe_values)
 
         super().__init__(
@@ -253,9 +220,10 @@ class STREGO(TrustRegionBO):
             deterministic=deterministic,
         )
 
-    # -- bookkeeping --------------------------------------------------------
+
 
     def _open_log(self, log_path: str) -> None:
+        """Create the run's trace CSV (one row per evaluation, appended by _observe) and write its header."""
         ensure_directory(os.path.dirname(log_path) or ".")
         self._log_handle = open(log_path, "w", newline="")
         self._log_writer = csv.DictWriter(
@@ -269,6 +237,7 @@ class STREGO(TrustRegionBO):
         self._log_handle.flush()
 
     def close(self) -> None:
+        """Called at the end of the run to close the logging file"""
         if self._log_handle is not None:
             self._log_handle.close()
             self._log_handle = None
@@ -279,9 +248,6 @@ class STREGO(TrustRegionBO):
 
     def _observe(self, x: np.ndarray, phase: str, precomputed: Optional[float] = None) -> float:
         """Evaluate the objective at ``x``, store it, and log the row.
-
-        ``precomputed`` reuses a value from an injected design instead of
-        spending an evaluation.
         """
         x = np.asarray(x, dtype=float).flatten()
         if precomputed is not None:
@@ -302,13 +268,10 @@ class STREGO(TrustRegionBO):
                 "phase": phase,
                 "value": f,
                 "best_so_far": self.best_y,
-                # sigma_k does not exist yet while the initial design runs.
                 "sigma": getattr(self, "sigma_k", 0.0),
                 "elapsed_seconds": elapsed,
                 "cum_seconds": time.perf_counter() - self._run_start,
             })
-            # Flushed per row: campaigns are long, and a killed run should still
-            # leave a readable trace.
             self._log_handle.flush()
 
         return f
@@ -332,7 +295,6 @@ class STREGO(TrustRegionBO):
         best_idx = int(np.argmin(self.y_obs))
         return self.X_obs[best_idx].copy(), float(self.y_obs[best_idx])
 
-    # -- trust region -------------------------------------------------------
 
     def _build_trust_region(self) -> dict:
         """Trust-region box around the incumbent, in normalized and raw coords."""
@@ -352,9 +314,9 @@ class STREGO(TrustRegionBO):
         }
 
     def step(self) -> dict:
-        """One trust-region iteration: global, then local only if global failed."""
-        # Beyond sigma_k = 1 the region already covers the box; expanding further
-        # is a no-op that only delays the first contraction.
+        """One STREGO run"""
+      
+        
         self.sigma_k = min(self.sigma_k, 1.0)
 
         if self._budget_reached():
@@ -377,30 +339,28 @@ class STREGO(TrustRegionBO):
             self.sigma_k = self.gamma * self.sigma_k
             return self._record("local_success")
 
-        # Failure: contract. How hard depends on whether the failure is
-        # attributable to noise (see strego.trust_region).
+     
         if self.deterministic or self.certain_failure(f_lcl):
             self.sigma_k = self.beta_2 * self.sigma_k
             return self._record("unsuccessful" if self.deterministic else "certain_unsuccessful")
         self.sigma_k = self.beta_1 * self.sigma_k
         return self._record("uncertain_unsuccessful")
 
-    # -- phases -------------------------------------------------------------
 
     def global_phase(self) -> tuple[np.ndarray, float]:
         """Propose and evaluate a batch from the bi-objective Pareto front."""
         n_batch = min(self.global_batch_size, self.budget - len(self.y_obs))
-
+        #fallout if we don't have enough points for the global phase
         if len(self.X_obs) < 2:
-            # Too little data to fit a surrogate worth trusting.
             selected_x = np.random.uniform(
                 self.lower_bounds, self.upper_bounds, size=(n_batch, self.dim)
             )
         else:
+            #Fit the global GP on normalized data
             Xn = np.clip(normalize(np.array(self.X_obs), self.lower_bounds, self.upper_bounds), 0.0, 1.0)
             model = fit_gp(Xn, np.array(self.y_obs), self.dim)
 
-            # Re-seeded per call so successive pools do not repeat.
+            #Prepare initial population for NSMA
             sobol = SobolEngine(dimension=self.dim, scramble=True, seed=self.seed + len(self.X_obs))
             Xn_pool = sobol.draw(self.candidate_pool_size).cpu().numpy()
 
@@ -429,26 +389,13 @@ class STREGO(TrustRegionBO):
 
     def _gather_local_data(self, trust_region: dict) -> tuple[np.ndarray, np.ndarray]:
         """Local design for the local GP, via the relaxation rule.
-
-        Start from the observations inside the trust region. While the local
-        design holds fewer than ``n_min`` points, relax the region: at step
-        ``j`` its radius is ``(1 + j * relaxation_step)`` times the trust-region
-        radius, still centred on the incumbent and clipped to the domain.
-
-        Relaxation only decides what the local GP is *trained on*. The next
-        point is still searched inside the unrelaxed trust region, so
-        ``sigma_k`` keeps full control of the local phase's extent -- a sparse
-        region borrows data from its neighbourhood, not search territory.
-
-        Termination is guaranteed: the growth is unbounded, and once the box
-        covers the whole domain it holds every observation, of which there are
-        at least ``n_init >= n_min``.
         """
+        #Make sure we have identical points to ensure correct GP behavior. This is a fallout in case one of the phases produced very close points.
         X_all, y_all = unique_rows_tol(
             np.array(self.X_obs, dtype=float), np.array(self.y_obs, dtype=float)
         )
         Xn_all = np.clip(normalize(X_all, self.lower_bounds, self.upper_bounds), 0.0, 1.0)
-
+         
         center_n = trust_region["center_n"]
         radius_tr = trust_region["radius_n"]
 
@@ -458,8 +405,6 @@ class STREGO(TrustRegionBO):
             lower_n = np.clip(center_n - radius, 0.0, 1.0)
             upper_n = np.clip(center_n + radius, 0.0, 1.0)
             inside = distance_to_box(Xn_all, lower_n, upper_n) == 0
-            # radius >= 1 means the box already spans the whole unit cube: every
-            # observation is in, and relaxing further cannot add any.
             if inside.sum() >= self.min_local_points or radius >= 1.0:
                 return X_all[inside], y_all[inside]
             j += 1
@@ -467,34 +412,31 @@ class STREGO(TrustRegionBO):
     def local_phase(self, trust_region: dict) -> tuple[np.ndarray, float]:
         """Minimize the local GP's posterior mean inside the trust region."""
         X_local, y_local = self._gather_local_data(trust_region)
-
+        # In case we don't have enough data or we reached our maximum budget, the local phase doesn't take place and we retrun the current incumbent.
         if X_local.shape[0] < 2 or self._budget_reached():
-            # Nothing to fit, or nothing left to spend: report the incumbent so
-            # the caller records a (non-improving) iteration and contracts.
             return self.x_k.copy(), float(self.f_k)
-
-        # The local GP is normalized to the FULL problem box, not the local one.
-        # Only the *search* is restricted to the trust region; keeping the input
-        # scaling global means the local and global models are directly
-        # comparable and the kernel's lengthscale prior stays meaningful.
         Xn_local = np.clip(normalize(X_local, self.lower_bounds, self.upper_bounds), 0.0, 1.0)
         model = fit_gp(Xn_local, y_local, self.dim)
-        acq = qNegativePosteriorMean(model=model, maximize=False)
-
+        acq = NegativePosteriorMean(model=model, maximize=False)
+        #Extract tbe original trust region's bounds
         z_lower = np.clip(trust_region["lower_n"], 0.0, 1.0)
         z_upper = np.clip(trust_region["upper_n"], 0.0, 1.0)
-        # Guard zero-width dimensions, which make optimize_acqf ill-posed.
-        z_upper = np.maximum(z_upper, z_lower + 1e-9)
+     
+        z_upper = np.maximum(z_upper, z_lower)
         bounds_t = torch.stack([
             torch.tensor(z_lower, dtype=torch.float64),
             torch.tensor(z_upper, dtype=torch.float64),
         ])
+         # Pre-screen: score a Sobol pool of local_raw_samples points inside the
+        # trust region with the acquisition (-mu) and keep the best
+        # local_num_restarts (default 2d + 4) as starting points for L-BFGS.
+        # BoTorch's standard procedure would work too (drop
+        # batch_initial_conditions and pass raw_samples to optimize_acqf): it
+        # scores a similar pool but samples the starts at random, weighted toward
+        # high scores, and then discards the pool. We keep our ranked pool so that,
+        # if the optimizer returns an already-evaluated point, we can fall back to
+        # the best unseen point of the pool (see below).
 
-        # Prescreen: score a Sobol pool of local_raw_samples points in one batched
-        # forward pass and use the best local_num_restarts of them as warm starts.
-        # Far more reliable than letting optimize_acqf start from raw random
-        # samples, because in high dimensions most random starts sit on a flat
-        # part of the posterior mean.
         pool_unit = SobolEngine(
             dimension=self.dim, scramble=True, seed=self.seed + len(self.X_obs) + 1
         ).draw(self.local_raw_samples).to(torch.float64)
@@ -521,9 +463,7 @@ class STREGO(TrustRegionBO):
             upper,
         )
 
-        # A collapsed trust region will keep returning the incumbent. Re-evaluating
-        # it wastes budget, so walk down the prescreened pool for the best point
-        # we have not seen yet.
+   
         if is_close_to_any(x_new, self.X_obs, tol=1e-6):
             pool_sorted = pool_t[ranked].cpu().numpy()
             x_new = next(
@@ -540,22 +480,16 @@ class STREGO(TrustRegionBO):
 
         f_new = self._observe(x_new, phase="local-mean")
 
-        # Report the best point in the local set *including* history, not just the
-        # new one: the trust-region test asks whether the local region contains an
-        # improvement, and an already-evaluated neighbour is a valid answer.
         all_x = np.vstack([X_local, x_new[None, :]])
         all_f = np.concatenate([y_local, [f_new]])
         best = int(np.argmin(all_f))
         return all_x[best], float(all_f[best])
 
-    # -- driver -------------------------------------------------------------
 
     def run(self) -> OptimizationResult:
         """Run until the evaluation budget is exhausted."""
+        #Fix the seed of every random number generator to ensure reproducibility.
         set_all_seeds(self.seed)
-
-        # Each iteration spends at least one evaluation, so the remaining budget
-        # is a safe upper bound on the iteration count.
         results = self.optimize(
             max_iterations=max(1, self.budget - self.n_init),
             stopping_criterion=lambda opt: opt._budget_reached(),
