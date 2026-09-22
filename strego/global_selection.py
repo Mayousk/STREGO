@@ -1,15 +1,7 @@
-"""Solving the global-phase bi-objective problem and turning its front into a batch.
-
-Two steps, kept separate because they answer different questions:
-
+"""Solving the global-phase bi-objective problem.
 1. :func:`solve_biobjective` -- run NSMA on ``[mu, -IVR]`` starting from a Sobol
    pool, and return the non-dominated front.
 2. :func:`select_batch` -- choose ``batch_size`` points *from* that front.
-
-The front is a set of equally valid exploit/explore compromises, so step 2 is a
-diversity problem, not a ranking problem: we k-means the front in design space
-and take the point nearest each centroid. Picking the top-k by either objective
-would collapse the batch onto one end of the trade-off.
 """
 
 from __future__ import annotations
@@ -22,8 +14,7 @@ from sklearn.cluster import KMeans
 from .biobjective import BiObjectiveProblem
 
 # NSMA search hyperparameters. These are the reference implementation's values
-# and the ones every campaign in the paper used; they are collected here rather
-# than scattered through the call so the whole configuration is auditable.
+# and the ones every campaign in the paper used.
 NSMA_MAX_ITER = 20
 NSMA_POP_SIZE = 100
 NSMA_CROSSOVER_PROBABILITY = 0.9
@@ -31,13 +22,7 @@ NSMA_ETA = 20.0
 
 
 def _import_nsma():
-    """Import NSMA lazily.
-
-    NSMA pulls in TensorFlow, which must be put in graph mode before use and
-    prints a wall of device warnings on import. Deferring the import keeps
-    ``import strego`` fast and side-effect-free for anyone who only wants the
-    benchmarks or the GP helpers.
-    """
+    """Import NSMA. Must be handled on its own since NSMA requires graph mode and modern TensorFlow starts in eager mode."""
     os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
     os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
 
@@ -61,7 +46,7 @@ def solve_biobjective(
     """Run NSMA on the GP's bi-objective problem, seeded with ``Xn_pool``.
 
     Returns ``(pareto_x, pareto_f)`` in normalized [0, 1]^d coordinates. The
-    front can be empty if the search degenerates; callers must handle that.
+    front can be empty if the search degenerates.
     """
     NSMA, pareto_efficient = _import_nsma()
     dim = Xn_pool.shape[1]
@@ -74,7 +59,7 @@ def solve_biobjective(
         seed=seed,
     )
 
-    # NSMA needs the initial population pre-evaluated.
+    
     F = np.array([problem.evaluate_functions(Xn_pool[i]) for i in range(len(Xn_pool))])
 
     solver = NSMA(
@@ -122,27 +107,22 @@ def select_batch(
     seed: int = 0,
 ) -> np.ndarray:
     """Pick ``batch_size`` points from the Pareto front.
-
-    ``Xn_pool`` is only the fallback source for a degenerate (empty) front.
     """
     n_pareto = pareto_x.shape[0]
 
     if n_pareto == 0:
-        # NSMA returned nothing usable; keep the run alive with random points
-        # rather than aborting a multi-hour trial.
+        # NSMA returned nothing usable; keep the run alive with random points.
+      
         idx = np.random.choice(len(Xn_pool), size=batch_size, replace=False)
         return Xn_pool[idx]
 
     if batch_size == 1:
-        # A single point cannot represent a trade-off, so spend it on the best
-        # exploiter: the front's lowest posterior mean.
         best = int(np.argmin(pareto_f[:, 0]))
         return pareto_x[best : best + 1]
 
     if batch_size >= n_pareto:
-        # Front smaller than the batch: cycle it rather than pad with duplicates
-        # of one end.
-        return pareto_x[[i % n_pareto for i in range(batch_size)]]
+        return pareto_x
+
 
     # k-means the front in design space, then snap each centroid to its nearest
     # real front member (centroids themselves are not Pareto-optimal).
