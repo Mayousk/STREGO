@@ -1,4 +1,4 @@
-"""STREGO -- trust-region Bayesian optimization with a bi-objective global phase.
+"""STREGO --Scalable Trust Region Efficient Global Optimization
 
 See :mod:`strego.optimizer` for the algorithm and README.md for usage.
 """
