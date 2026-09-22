@@ -1,0 +1,10 @@
+# Versions this code is tested against (the environment used for the paper's
+# campaigns). Looser bounds are declared in pyproject.toml.
+numpy==1.22.4
+scipy==1.7.3
+scikit-learn==1.6.1
+torch==2.8.0
+gpytorch==1.11
+botorch==0.10.0
+nsma==1.0.14
+tensorflow==2.11.0
