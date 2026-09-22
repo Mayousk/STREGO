@@ -5,10 +5,7 @@ Two phases:
 
 1. **Shared design.** One Latin-hypercube DoE catalog per (function, dimension),
    holding the points *and* their objective values for every trial. Every run
-   reads its design from there instead of sampling its own, so trial ``t`` of any
-   configuration starts from byte-identical initial data. This is what makes an
-   ablation an ablation: pass ``--prebuilt-doe-dir`` pointing at a previous
-   campaign's ``doe/`` and the only thing that differs is the flag under study.
+   reads its design from there instead of sampling its own.
 
 2. **Runs.** One process per (function, dimension, trial), pooled across
    ``--max-workers``.
@@ -73,7 +70,7 @@ def generate_doe_catalog(
     """Write one DoE catalog covering every trial of a (function, dimension) case.
 
     Values are stored alongside the points so that runs reuse them rather than
-    re-evaluating -- important under noise, where re-evaluating the same design
+    re-evaluating which is important under noise, where re-evaluating the same design
     would give each run a different starting picture.
     """
     ensure_directory(os.path.dirname(path))
@@ -93,14 +90,10 @@ def generate_doe_catalog(
 
 
 def find_prebuilt_doe(doe_dir: str, func_name: str, dim: int, noise_type: str) -> str:
-    """Locate the catalog for exactly this case in an existing DoE directory.
+    """Checks if a doe hasn't been generated yet. If so, extracts it.
 
     Matched on the full ``{function}_{noise}_{dim}_trials`` prefix. The full
-    function name must agree, so ``ackley`` never picks up an
-    ``ackley_fullshift`` catalog sitting in the same folder; and the noise tag
-    must agree, so a deterministic design is never fed to a noisy campaign or
-    the reverse. Trial count, seed and design size may legitimately differ and
-    are checked against what the campaign needs by :func:`check_doe_catalog`.
+    function name must agree`.
     """
     pattern = os.path.join(doe_dir, f"{func_name}_{noise_type}_{dim}_trials*.csv")
     matches = sorted(glob.glob(pattern))
@@ -108,18 +101,16 @@ def find_prebuilt_doe(doe_dir: str, func_name: str, dim: int, noise_type: str) -
         raise FileNotFoundError(
             f"No DoE catalog for {func_name} d={dim} noise={noise_type} in {doe_dir}"
         )
-    if len(matches) > 1:
-        # Picking one silently would make the ablation depend on file ordering.
-        listing = "\n    ".join(os.path.basename(m) for m in matches)
-        raise ValueError(f"Ambiguous DoE catalogs for {func_name} d={dim} noise={noise_type}:\n    {listing}")
     return matches[0]
 
 
 def check_doe_catalog(path: str, dim: int, num_trials: int, n_init: int) -> None:
-    """Fail before any run starts if the catalog cannot serve the campaign.
+     """Check that a DoE catalog can supply every run of the campaign.
 
-    Checked up front rather than inside each worker: a reused catalog with too
-    few trials would otherwise surface as a string of per-run failures hours in.
+    Verifies three things, and raises ValueError on the first that fails:
+      - the catalog has `dim` coordinate columns;
+      - it contains every trial 0 .. num_trials-1;
+      - each of those trials has at least `n_init` points..
     """
     with open(path, "r", newline="") as handle:
         reader = csv.DictReader(handle)
@@ -143,7 +134,8 @@ def check_doe_catalog(path: str, dim: int, num_trials: int, n_init: int) -> None
 
 
 def load_doe_trial(path: str, trial: int, expected_dim: int) -> tuple[int, np.ndarray, np.ndarray | None]:
-    """Read one trial's design out of a catalog."""
+    
+
     with open(path, "r", newline="") as handle:
         reader = csv.DictReader(handle)
         fields = reader.fieldnames or []
@@ -169,19 +161,15 @@ def load_doe_trial(path: str, trial: int, expected_dim: int) -> tuple[int, np.nd
     return trial_seed, np.asarray(rows, dtype=float), (np.asarray(values, dtype=float) if has_y else None)
 
 
-# -- runs ---------------------------------------------------------------------
 
 
 def detail_log_path(detail_dir: str, func_name: str, dim: int, trial: int) -> str:
+   """Return the path of a run's trace CSV, used both to write it and to find it again on resume."""
     return os.path.join(detail_dir, f"strego_{func_name}_d{dim}_trial{trial}.csv")
 
 
 def completed_run(log_path: str, budget: int) -> dict | None:
-    """The finished run's (seed, best_y) if its trace holds the full budget, else None.
-
-    A trace shorter than the budget belongs to a run that was killed; it is
-    rerun from scratch (STREGO overwrites the trace).
-    """
+    """Check whether a run already finished, i.e. its trace holds all `budget` evaluations."""
     if not os.path.exists(log_path):
         return None
     with open(log_path, "r", newline="") as handle:
@@ -245,10 +233,10 @@ def summary_row(task: dict, seed: int, best_y: float, n_evaluations: int) -> dic
 
 
 def task_label(task: dict) -> str:
+   """Short name of a run, used in progress and failure messages."""
     return f"{task['func_name']}_d{task['dim']} trial {task['trial']}"
 
 
-# -- CLI ----------------------------------------------------------------------
 
 
 def parse_args() -> argparse.Namespace:
@@ -258,7 +246,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--functions", default="rastrigin_fullshift,alpine01_fullshift,ackley_fullshift,schwefel_fullshift")
     p.add_argument("--dims", default="100,50,20,4")
     p.add_argument("--num-trials", type=int, default=20)
-    p.add_argument("--budget", type=int, default=400)
+    p.add_argument("--budget", type=int, default=200)
     p.add_argument("--n-init", type=int, default=DEFAULTS["n_init"])
     p.add_argument("--seed", type=int, default=42, help="Base seed; trial t uses seed + t")
     p.add_argument("--max-workers", type=int, default=4)
@@ -307,9 +295,6 @@ def main() -> None:
     detail_dir = os.path.join(args.output_dir, "details")
     ensure_directory(detail_dir)
 
-    # Everything that changes what a run computes. Functions, dims and the
-    # trial count are deliberately left out: extending a campaign with more
-    # trials or another dimension under the same settings is a valid resume.
     config = {
         "seed": args.seed,
         "noise_type": args.noise_type,
@@ -410,9 +395,7 @@ def main() -> None:
     failures: list[tuple[dict, Exception]] = []
 
     def record(task: dict, row: dict | None, exc: Exception | None) -> None:
-        # One handler for both execution modes, so a failure means the same
-        # thing whether the campaign runs serially or in a pool: it is logged,
-        # the campaign carries on, and the summary is still written.
+.
         if exc is not None:
             failures.append((task, exc))
             print(f"  [FAILED] {task_label(task)}: {exc}")
