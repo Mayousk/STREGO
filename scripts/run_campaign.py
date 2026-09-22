@@ -394,7 +394,7 @@ def main() -> None:
     failures: list[tuple[dict, Exception]] = []
 
     def record(task: dict, row: dict | None, exc: Exception | None) -> None:
-.
+       """Log a finished or failed run, the same way in serial and parallel mode."""
         if exc is not None:
             failures.append((task, exc))
             print(f"  [FAILED] {task_label(task)}: {exc}")
