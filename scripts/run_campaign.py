@@ -1,10 +1,10 @@
 #!/usr/bin/env python
-"""Multi-trial STREGO campaign over functions x dimensions x repeats.
+"""STREGO campaign over multiple functions, dimensions and trials.
 
 Two phases:
 
 1. **Shared design.** One Latin-hypercube DoE catalog per (function, dimension),
-   holding the points *and* their objective values for every trial. Every run
+   holding the points and their objective values for every trial. Every run
    reads its design from there instead of sampling its own.
 
 2. **Runs.** One process per (function, dimension, trial), pooled across
@@ -18,12 +18,12 @@ Outputs, under ``--output-dir``:
     summary.csv          one row per completed run (final best_y)
 
 **Resuming.** Rerunning the same command skips every run whose trace already
-holds the full budget, and redoes the rest -- so a killed campaign picks up
+holds the full budget, and redoes the rest so a killed campaign picks up
 where it stopped. Resuming with *different* STREGO or noise settings is refused
 (compared against ``config.json``), because the summary would silently mix two
 configurations. Use a fresh ``--output-dir`` for a new configuration.
 
-Example -- the batch-size ablation from the paper:
+Example:
 
     python scripts/run_campaign.py \\
         --output-dir results/batch_b1 --global-batch-size 1 \\
@@ -56,7 +56,6 @@ from strego.utils import ensure_directory, set_all_seeds
 SUMMARY_FIELDS = ["solver", "function", "dimension", "trial", "seed", "best_y", "n_evaluations", "log_path"]
 
 
-# -- shared design ------------------------------------------------------------
 
 
 def doe_filename(func_name: str, dim: int, noise_type: str, num_trials: int, seed: int, n_init: int) -> str:
