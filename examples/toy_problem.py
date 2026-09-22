@@ -1,13 +1,5 @@
-#!/usr/bin/env python
-"""Minimal example: optimize your own function with STREGO.
-
-    python examples/quickstart.py
-
-Takes a couple of minutes. Most of that is the global phase: each one runs a
-full NSMA search over the GP's bi-objective problem, which is deliberate --
-STREGO assumes the objective is far more expensive than the search that picks
-the next point. On a cheap toy objective like this one, that trade looks
-lopsided; on a real simulator it is the whole point.
+"""
+Tests STREGO on a toy problem
 """
 
 import os
