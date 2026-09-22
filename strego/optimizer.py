@@ -488,12 +488,13 @@ class STREGO(TrustRegionBO):
 
     def run(self) -> OptimizationResult:
         """Run until the evaluation budget is exhausted."""
-        #Fix the seed of every random number generator to ensure reproducibility.
+        # Seed every random number generator (Python, NumPy, PyTorch) so that
+        # runs with the same seed are reproducible.
         set_all_seeds(self.seed)
-        results = self.optimize(
-            max_iterations=max(1, self.budget - self.n_init),
-            stopping_criterion=lambda opt: opt._budget_reached(),
-        )
+
+        # Each step spends at least one evaluation, so this always terminates.
+        while not self._budget_reached():
+            self.step()
         self.close()
 
         best_idx = int(np.argmin(self.y_obs))
@@ -501,7 +502,7 @@ class STREGO(TrustRegionBO):
             best_x=self.X_obs[best_idx].copy(),
             best_y=float(self.y_obs[best_idx]),
             n_evaluations=len(self.y_obs),
-            n_iterations=results["n_iterations"],
-            history=results["history"],
+            n_iterations=self.k,
+            history=self.history,
             log_path=self.log_path,
         )
