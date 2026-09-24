@@ -1,42 +1,15 @@
 """The bi-objective problem solved in STREGO's global phase.
 
-This is the heart of the method. Instead of scalarising exploitation and
-exploration into a single acquisition, the global phase poses them as two
-objectives and hands the trade-off to a multi-objective solver:
-
     minimize  [ mu(x),  -IVR(x) ]        (``MU_IVR``, the default)
     minimize  [ mu(x),  -var(x) ]        (``MU_SIGMA``, the classic pairing)
 
 ``mu`` is the GP posterior mean (exploit) and the second objective is the
 exploration term (negated, so that both are minimized).
 
-Why IVR rather than the posterior variance
-------------------------------------------
-``-var(x)`` rewards a candidate for being uncertain *at itself*. In high
-dimensions that is nearly every unobserved point at once, so the Pareto front
-degenerates: the exploration axis saturates and the front collapses onto the
-exploitation axis.
-
-The integrated variance reduction asks a better question -- how much would
-sampling ``c`` reduce the posterior variance *everywhere else*? For a GP that
-has a closed form. Conditioning on a new observation at ``c`` reduces the
-variance at any ``z`` by
-
-    Delta(z; c) = cov(z, c | D)^2 / var(c | D)
-
-so, averaged over an integration grid Z drawn on the domain,
-
-    IVR(c) = (1/N) * sum_z cov(z, c | D)^2 / var(c | D).
-
-Both terms come straight out of the joint posterior covariance over ``[Z; c]``,
-which makes the whole objective a single posterior call. ``observation_noise=True``
-makes the denominator the predictive variance of the look-ahead observation,
-which also keeps it strictly positive.
-
 Attribution
 -----------
 The ``[mu, -var]`` bi-objective acquisition solved with NSMA, and the problem
-interface used here, come from
+interface used here, comes from
 
     F. Carciaghi, S. Magistri, P. Mansueto, F. Schoen. "A Bi-Objective
     Optimization Based Acquisition Strategy for Batch Bayesian Global
@@ -68,13 +41,6 @@ _JITTER = 1e-12
 
 
 class BiObjectiveProblem(Problem):
-    """NSMA-facing view of the GP's [exploit, explore] trade-off.
-
-    The solver drives this through ``evaluate_functions`` (values) and
-    ``evaluate_functions_jacobian`` (gradients, used by NSMA's memetic descent
-    steps), both in the GP's normalized [0, 1]^d coordinates.
-    """
-
     def __init__(
         self,
         dim: int,
@@ -92,15 +58,8 @@ class BiObjectiveProblem(Problem):
         self.objective_pair = objective_pair
         self._posterior = model.posterior
 
-        # NSMA searches the normalized cube, matching the GP's input space.
         self.lb = np.zeros((dim,), dtype=float)
         self.ub = np.ones((dim,), dtype=float)
-
-        # Fixed Sobol integration grid for IVR. Fixed (not resampled per call) so
-        # that the two objectives stay consistent across one NSMA search -- a
-        # moving grid makes the front jitter and defeats the memetic descent.
-        # 64 points is the campaign default: it keeps NSMA tractable at d = 100,
-        # where every jacobian call costs a joint posterior over N + 1 points.
         self._ivr_Z = None
         if objective_pair == "MU_IVR":
             engine = torch.quasirandom.SobolEngine(dimension=dim, scramble=True, seed=seed)
@@ -109,10 +68,6 @@ class BiObjectiveProblem(Problem):
         self._objective_fns = (
             [self.mu_x, self.ivr_x] if objective_pair == "MU_IVR" else [self.mu_x, self.sigma_x]
         )
-
-    # -- objectives ---------------------------------------------------------
-    # Each takes a (1, d) tensor and returns a 1-element tensor, kept connected
-    # to the input so autograd can supply the jacobian.
 
     def mu_x(self, x0: torch.Tensor) -> torch.Tensor:
         """Posterior mean -- the exploitation objective (minimized)."""
@@ -133,8 +88,6 @@ class BiObjectiveProblem(Problem):
         var_c = cov[n, n]  # var(c | D) + noise
         ivr = (cov_zc ** 2).sum() / (var_c + _JITTER) / n
         return -ivr.reshape(1)
-
-    # -- NSMA Problem contract ---------------------------------------------
 
     @property
     def objectives(self) -> list:
@@ -159,8 +112,7 @@ class BiObjectiveProblem(Problem):
         rows = []
         for i, f in enumerate(self._objective_fns):
             value = f(x_t).reshape(-1)[0]
-            # retain_graph for every objective but the last: they share the one
-            # posterior graph built from x_t.
+
             (grad,) = torch.autograd.grad(
                 value, x_t, retain_graph=(i < len(self._objective_fns) - 1)
             )
@@ -168,7 +120,7 @@ class BiObjectiveProblem(Problem):
         return np.vstack(rows)
 
     def evaluate_constraints(self, x: np.ndarray) -> list:
-        return []  # box bounds only, handled by lb/ub
+        return [] 
 
     @staticmethod
     def name() -> str:
