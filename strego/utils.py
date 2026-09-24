@@ -1,9 +1,3 @@
-"""Small numerical helpers shared by the optimizer, the GP models and the runners.
-
-Everything here is deliberately dependency-light: the optimizer spends most of
-its time inside BoTorch/NSMA, so these helpers are the parts we want to stay
-obvious and cheap.
-"""
 
 from __future__ import annotations
 
@@ -16,11 +10,8 @@ import torch
 
 
 def set_all_seeds(seed: int) -> None:
-    """Seed every RNG the optimizer touches.
-
-    We deliberately do *not* enable ``torch.use_deterministic_algorithms``: it
-    makes some BoTorch fitting paths raise instead of falling back, and the
-    campaign numbers were produced without it.
+    """
+    Seed every random number generator to ensure reproducibility.
     """
     random.seed(seed)
     np.random.seed(seed)
@@ -35,18 +26,15 @@ def ensure_directory(path: str) -> None:
 
 
 def normalize(X: np.ndarray, lower: np.ndarray, upper: np.ndarray, eps: float = 1e-12) -> np.ndarray:
-    """Map points from the problem box into the unit cube."""
     scale = np.maximum(upper - lower, eps)
     return (np.asarray(X, dtype=float) - lower) / scale
 
 
 def denormalize(Xn: np.ndarray, lower: np.ndarray, upper: np.ndarray) -> np.ndarray:
-    """Inverse of :func:`normalize`."""
     return np.asarray(Xn, dtype=float) * (upper - lower) + lower
 
 
 def distance_to_box(X: np.ndarray, lower: np.ndarray, upper: np.ndarray) -> np.ndarray:
-    """L2 distance from each row of ``X`` to the box, 0 for points inside it."""
     below = np.clip(lower - X, 0.0, None)
     above = np.clip(X - upper, 0.0, None)
     return np.linalg.norm(below + above, axis=1)
@@ -54,9 +42,6 @@ def distance_to_box(X: np.ndarray, lower: np.ndarray, upper: np.ndarray) -> np.n
 
 def unique_rows_tol(X: np.ndarray, y: np.ndarray, tol: float = 1e-8) -> tuple[np.ndarray, np.ndarray]:
     """Drop duplicate rows (within ``tol``) while preserving the original order.
-
-    Duplicates come from the trust region revisiting points; feeding them to a GP
-    makes the covariance matrix singular, so we strip them before every fit.
     """
     if X.size == 0:
         return X, y
