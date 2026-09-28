@@ -9,12 +9,8 @@ description = "Trust-region Bayesian optimization with a bi-objective (mean / in
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.9"
-keywords = ["bayesian-optimization", "trust-region", "multi-objective", "high-dimensional", "gaussian-process"]
-classifiers = [
-    "Intended Audience :: Science/Research",
-    "Programming Language :: Python :: 3",
-    "Topic :: Scientific/Engineering :: Artificial Intelligence",
-]
+
+
 
 dependencies = [
     "numpy>=1.22",
