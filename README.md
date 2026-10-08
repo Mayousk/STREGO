@@ -83,10 +83,7 @@ results/baseline/
 ```
 
 **Resuming.** If a campaign is interrupted, rerun the same command: runs whose
-logs already holds the full budget are skipped, and the rest are redone. A
-resume with *different* settings is refused, since the summary would otherwise
-mix two configurations; use a fresh `--output-dir` for a new configuration.
-Failed runs are reported at the end (exit code 1) and retried on the next rerun.
+logs already holds the full budget are skipped, and the rest are redone.
 
 
 
