@@ -107,19 +107,19 @@ Defaults are the values used for the results in the paper.
 |---|---|---|
 | `budget` | — | total evaluations, including the initial design |
 | `n_init` | 10 | initial Latin-hypercube design size |
-| `objective_pair` | `MU_IVR` | global bi-objective; `MU_SIGMA` for `[mu, -var]` |
-| `ivr_integration_points` | 64 | Sobol grid size for IVR; keeps NSMA tractable at d = 100 |
-| `global_batch_size` | 3 | points taken from the Pareto front per global phase |
-| `min_local_points` | 10 | `n_min`: minimum local-design size; the TR is relaxed until reached |
-| `relaxation_step` | 0.5 | relaxation factor increment (radius 1×, 1.5×, 2.0×, …) |
-| `candidate_pool_size` | 250 | Sobol pool seeding NSMA; raised to `8*d` when larger |
+| `objective_pair` | `MU_IVR` | global bi-objective |
+| `ivr_integration_points` | 64 | Sobol grid size for IVR |
+| `global_batch_size` | 3 | Global batch size |
+| `min_local_points` | 10 | `n_min`: minimum local DoE size |
+| `relaxation_step` | 0.5 | relaxation factor increment |
+| `candidate_pool_size` | 250 | Sobol pool seeding NSMA |
 | `local_num_restarts` | `2d+4` | warm starts for the local acquisition |
 | `local_raw_samples` | `(2d+4)^2` | prescreen pool the warm starts are picked from |
-| `sigma_0` | `0.5*(1/5)^(1/d)` | initial radius — constant box *fraction*, not side length |
+| `sigma_0` | `0.5*(1/5)^(1/d)` | initial radius  |
 | `beta_1` | 0.7 | gentle contraction (uncertain failure) |
 | `beta_2` | 0.5 | hard contraction (certain failure) |
 | `gamma` | 2.0 | expansion on success |
-| `kappa` | 1.0 | sufficient-decrease threshold scale |
+| `kappa` | 1.0 | sufficient-decrease threshold parameter|
 
 
 
