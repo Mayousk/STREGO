@@ -143,8 +143,8 @@ ell_i ~ LogNormal(sqrt(2) + log(D)/2, sqrt(3))
 strego/
 ├── optimizer.py      STREGO: the two phases and the iteration
 ├── trust_region.py   trust-region framework: acceptance tests, radius updates
-├── biobjective.py    the [mu, -IVR] / [mu, -var] problem  
-├── global_selection.py     NSMA search + Pareto-front -> batch selection
+├── biobjective.py    the [mu, -IVR]  problem  
+├── global_selection.py    batch selection
 ├── models.py         the GP surrogate and dimension-scaled kernel
 ├── local_acquisition.py      local-phase posterior-mean acquisition
 ├── benchmarks.py     benchmark functions, shifts, noise wrappers
