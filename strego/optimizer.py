@@ -400,7 +400,7 @@ class STREGO(TrustRegionBO):
             return self.x_k.copy(), float(self.f_k)
         Xn_local = np.clip(normalize(X_local, self.lower_bounds, self.upper_bounds), 0.0, 1.0)
         model = fit_gp(Xn_local, y_local, self.dim)
-        acq = NegativePosteriorMean(model=model, maximize=False)
+        acq = NegativePosteriorMean(model=model)
         #Extract tbe original trust region's bounds
         z_lower = np.clip(trust_region["lower_n"], 0.0, 1.0)
         z_upper = np.clip(trust_region["upper_n"], 0.0, 1.0)
