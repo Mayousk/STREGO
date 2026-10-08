@@ -1,21 +1,4 @@
-"""STREGO: Scalable Efficient Global Optimization.
-
-STREGO runs a trust-region loop (see :mod:`strego.trust_region`) whose two
-phases are both GP-driven, but which are deliberately given different jobs:
-
-**Global phase** -- fit a GP on every observation so far, draw a Sobol candidate
-pool over the whole box, and solve the bi-objective problem ``[mu, -IVR]`` on
-that pool with NSMA. The resulting Pareto front is the set of exploit/explore
-compromises the surrogate considers defensible; we k-means it and evaluate a
-small batch (3 by default). This phase is where exploration happens, and it is
-*not* restricted to the trust region.
-
-**Local phase** -- only runs when the global batch failed to improve
-sufficiently. Collect the observations inside the trust region, relaxing the
-region until it holds at least ``n_min`` data points, fit an independant GP on that
-local design, and minimize the posterior mean inside the (unrelaxed) trust
-region. Pure exploitation, because the global phase already covered exploration.
-
+"""
 Example
 -------
 >>> import numpy as np
@@ -43,9 +26,9 @@ from botorch.optim import optimize_acqf
 from scipy.stats import qmc
 from torch.quasirandom import SobolEngine
 
-from .acquisition import NegativePosteriorMean
+from .local_acquisition import NegativePosteriorMean
 from .models import fit_gp
-from .selection import select_batch, solve_biobjective
+from .global_selection import select_batch, solve_biobjective
 from .trust_region import OptimizationResult, TrustRegionBO
 from .utils import (
     denormalize,
