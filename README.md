@@ -166,7 +166,7 @@ Tests: `pytest -q`.
 
 - [NSMA](https://github.com/pierlumanzu/nsma) — the memetic multi-objective
   solver used for the global phase.
-- The `[mu, -var]` bi-objective acquisition solved with NSMA, from
+- Clustering technique and choice of NSMA, from
   F. Carciaghi, S. Magistri, P. Mansueto & F. Schoen, *A Bi-Objective
   Optimization Based Acquisition Strategy for Batch Bayesian Global
   Optimization*, Computational Optimization and Applications (2025).
