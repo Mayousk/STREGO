@@ -1,101 +1,8 @@
 # STREGO
-
-**S**urrogate **TR**ust-region **E**fficient **G**lobal **O**ptimization — trust-region
-Bayesian optimization whose global phase poses exploitation and exploration as a
-*bi-objective problem* rather than scalarising them into a single acquisition.
-
-STREGO targets expensive, possibly noisy, black-box objectives in moderate to
-high dimension (tested up to d = 100).
-
----
-
-## The method
-
-Each iteration runs up to two phases against the same kind of GP surrogate.
-
-### Global phase — where exploration happens
-
-1. Fit a GP on every observation so far, over the whole domain.
-2. Draw a Sobol candidate pool.
-3. Solve a **bi-objective problem** on that pool with [NSMA](https://github.com/pierlumanzu/nsma):
-
-   ```
-   minimize  [ mu(x),  -IVR(x) ]
-   ```
-
-   `mu` is the posterior mean (exploit); `IVR` is the *integrated variance
-   reduction* (explore). This builds on the `[mu, -var]` bi-objective
-   acquisition of Carciaghi et al. (2025), with the variance replaced by IVR.
-4. The result is a Pareto front of defensible exploit/explore compromises.
-   k-means it in design space and evaluate a small batch (3 by default).
-
-The global phase always sees the **full domain** — it is never restricted to the
-trust region.
-
-### Why IVR instead of the posterior variance
-
-The usual exploration term, `-var(x)`, rewards a candidate for being uncertain
-*at itself*. In high dimensions that describes nearly every unobserved point, so
-the exploration axis saturates and the Pareto front collapses onto the
-exploitation axis — the bi-objective formulation stops buying anything.
-
-IVR asks a better question: how much would sampling `c` reduce the posterior
-variance **everywhere else**? For a GP this is closed-form. Conditioning on a new
-observation at `c` reduces the variance at any `z` by
-`cov(z, c | D)^2 / var(c | D)`, so averaged over an integration grid `Z`:
-
-```
-IVR(c) = (1/N) * sum_z  cov(z, c | D)^2 / var(c | D)
-```
-
-Both terms come out of a single joint posterior over `[Z; c]`, so the objective
-costs one posterior call. Set `--objective-pair MU_SIGMA` to use the classic
-`[mu, -var]` pairing instead.
-
-### Local phase — pure exploitation
-
-Runs **only** when the global batch failed to improve sufficiently. It fits the
-same GP class on a *local design* around the incumbent and minimizes the
-posterior mean inside the trust region. No exploration term: the global phase
-already covered that, and an EI-style local phase would re-explore a region that
-was chosen for its information content.
-
-The local design is built with a **relaxation rule**. Start from the
-observations inside the trust region; while there are fewer than `n_min` of
-them, relax the region — at step `j` its radius becomes
-`(1 + j * relaxation_step)` times the trust-region radius (1× — the trust region itself — then 1.5×, 2.0×, …
-with the default step of 0.5) — until the local design holds at least `n_min`
-points.
-
-Relaxation only decides what the local GP is **trained on**. The next point is
-still searched inside the unrelaxed trust region, so `sigma_k` keeps full
-control of the local phase's extent: a sparse region borrows data from its
-neighbourhood, not search territory. Because `n_min <= n_init`, the rule always
-terminates — at worst the box covers the whole domain and holds every
-observation.
-
-### Trust-region updates under noise
-
-Standard TREGO expands on sufficient decrease and contracts otherwise. Under
-noise a failure is ambiguous — genuinely worse, or a good point that evaluated
-badly — and collapsing both into one factor makes the region shrink too fast.
-STREGO splits failure in two:
-
-| Case | Condition | Action |
-|---|---|---|
-| Success | `f <= f_k - kappa * sigma_k^2` | expand by `gamma` |
-| Certain failure | `f >= f_k + kappa * sigma_k^2` | contract by `beta_2` (hard) |
-| Uncertain failure | otherwise | contract by `beta_1` (gentle) |
-
-with `beta_2 <= beta_1`. Pass `--deterministic` for noise-free objectives to use
-the single factor `beta_2`.
-
-Because the trust region gates only the *local* phase, a collapsed region never
-strands the search: the global phase can still propose anywhere, and a global
-success re-centres and re-expands the region.
-
----
-
+ 
+**S**calable **TR**ust-region **E**fficient **G**lobal **O**ptimization: trust-region Bayesian optimization for expensive, noisy black-box functions in high dimensions.
+ 
+STREGO alternates a global and a local phase. The global phase selects points from the Pareto front of the bi-objective problem $\min\,[\mu(x), -\mathrm{IVR}(x)]$, where IVR (integrated variance reduction) replaces the posterior variance, which saturates in high dimensions. The local phase minimizes the posterior mean inside a trust region, and the trust region is updated with a noise-aware rule. Details are in the [paper](LINK).
 ## Installation
 
 ```bash
@@ -111,9 +18,7 @@ pip install -r requirements.txt
 ```
 
 **Note on dependencies.** The global phase's multi-objective solver is `nsma`,
-which depends on TensorFlow and uses it in graph mode. TensorFlow is imported
-lazily — only when a global phase actually runs — so `import strego` stays fast
-and side-effect-free. Everything else is the standard BoTorch/GPyTorch stack.
+which depends on TensorFlow and uses it in graph mode. TensorFlow is imported only when a global phase actually runs. Everything else is the standard BoTorch/GPyTorch stack.
 
 Tested on Python 3.9 with botorch 0.10.0 and torch 2.8.0.
 
@@ -143,8 +48,7 @@ print(result.best_y, result.best_x)
 ```
 
 `log_path` receives one row per objective evaluation — `phase`, `value`,
-`best_so_far`, `sigma`, and wall-clock — flushed as it goes, so a killed run
-still leaves a readable trace.
+`best_so_far`, `sigma`, and wall-clock .
 
 Runnable version: [`examples/quickstart.py`](examples/quickstart.py).
 
@@ -158,7 +62,7 @@ Single run on a built-in benchmark:
 python scripts/run_strego.py --function rastrigin_fullshift --dim 50 --budget 400
 ```
 
-Multi-trial campaign (functions x dimensions x repeats, parallelised):
+Multi-trial campaign (functions x dimensions x repeats, parallelized):
 
 ```bash
 python scripts/run_campaign.py \
@@ -179,26 +83,13 @@ results/baseline/
 ```
 
 **Resuming.** If a campaign is interrupted, rerun the same command: runs whose
-trace already holds the full budget are skipped, and the rest are redone. A
+logs already holds the full budget are skipped, and the rest are redone. A
 resume with *different* settings is refused, since the summary would otherwise
 mix two configurations; use a fresh `--output-dir` for a new configuration.
 Failed runs are reported at the end (exit code 1) and retried on the next rerun.
 
-### Reproducing an ablation
 
-Every run reads its initial design from the shared DoE catalog, so trial `t` of
-any configuration starts from byte-identical initial data. Point a second
-campaign at the first one's `doe/` and the flag under study becomes the only
-thing that differs. Catalogs are matched on function, dimension *and*
-`--noise-type`, so a deterministic design is never reused for a noisy campaign:
 
-```bash
-python scripts/run_campaign.py \
-    --output-dir results/batch_b1 --global-batch-size 1 \
-    --prebuilt-doe-dir results/baseline/doe \
-    --functions rastrigin_fullshift,alpine01_fullshift,ackley_fullshift,schwefel_fullshift \
-    --dims 100,50,20,4 --budget 400 --num-trials 20 --max-workers 4
-```
 
 Noisy campaigns:
 
@@ -233,9 +124,7 @@ Defaults are the values used for the results in the paper.
 | `gamma` | 2.0 | expansion on success |
 | `kappa` | 1.0 | sufficient-decrease threshold scale |
 
-All defaults are defined once, in the `DEFAULTS` dictionary at the top of
-[`strego/optimizer.py`](strego/optimizer.py); both command-line scripts read
-from it.
+
 
 ### The surrogate
 
@@ -247,28 +136,9 @@ Optimization Performs Great in High Dimensions* (ICML 2024):
 ell_i ~ LogNormal(sqrt(2) + log(D)/2, sqrt(3))
 ```
 
-The median lengthscale grows like `sqrt(D)`, cancelling the `sqrt(D)` growth of
-pairwise distances in the unit cube. Without it, at D = 100 the kernel collapses
-onto its prior, the posterior mean flattens, and the Pareto front the global
-phase depends on goes with it.
-
 ---
 
-## Benchmarks
 
-Four multimodal functions — `rastrigin`, `alpine01`, `ackley`, `schwefel` — each
-with a `_fullshift` variant.
-
-The shifts matter. Rastrigin, alpine01 and ackley all put their optimum at the
-origin, the exact centre of their boxes. Any method with a centre bias gets an
-unearned advantage there — and IVR has one, since its integration grid is uniform
-over the box, so interior candidates outscore edge candidates on geometry alone.
-The `_fullshift` variants relocate the optimum to a random interior point
-(deterministic given the seed), so the comparison measures search rather than
-luck. Schwefel needs separate handling because it is unbounded below; see the
-derivation in [`strego/benchmarks.py`](strego/benchmarks.py).
-
----
 
 ## Repository layout
 
@@ -276,7 +146,7 @@ derivation in [`strego/benchmarks.py`](strego/benchmarks.py).
 strego/
 ├── optimizer.py      STREGO: the two phases and the iteration
 ├── trust_region.py   trust-region framework: acceptance tests, radius updates
-├── biobjective.py    the [mu, -IVR] / [mu, -var] problem  <- the core idea
+├── biobjective.py    the [mu, -IVR] / [mu, -var] problem  
 ├── selection.py      NSMA search + Pareto-front -> batch selection
 ├── models.py         the GP surrogate and dimension-scaled kernel
 ├── acquisition.py    local-phase posterior-mean acquisition
@@ -293,13 +163,7 @@ Tests: `pytest -q`.
 
 ## Citation
 
-```bibtex
-@article{strego,
-  title   = {STREGO: Trust-Region Bayesian Optimization with a Bi-Objective Global Phase},
-  author  = {Kadri, Meissem},
-  year    = {2026}
-}
-```
+
 
 ## Acknowledgements
 
