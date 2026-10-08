@@ -147,9 +147,9 @@ strego/
 ├── optimizer.py      STREGO: the two phases and the iteration
 ├── trust_region.py   trust-region framework: acceptance tests, radius updates
 ├── biobjective.py    the [mu, -IVR] / [mu, -var] problem  
-├── selection.py      NSMA search + Pareto-front -> batch selection
+├── global_selection.py     NSMA search + Pareto-front -> batch selection
 ├── models.py         the GP surrogate and dimension-scaled kernel
-├── acquisition.py    local-phase posterior-mean acquisition
+├── local_acquisition.py      local-phase posterior-mean acquisition
 ├── benchmarks.py     benchmark functions, shifts, noise wrappers
 └── utils.py          numerical helpers
 scripts/
