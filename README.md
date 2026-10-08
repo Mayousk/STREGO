@@ -50,7 +50,7 @@ print(result.best_y, result.best_x)
 `log_path` receives one row per objective evaluation — `phase`, `value`,
 `best_so_far`, `sigma`, and wall-clock .
 
-Runnable version: [`examples/quickstart.py`](examples/quickstart.py).
+Runnable version: [`examples/toy_problem.py`](examples/toy_problem.py).
 
 ---
 
