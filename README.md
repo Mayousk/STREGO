@@ -172,5 +172,5 @@ Tests: `pytest -q`.
   Optimization*, Computational Optimization and Applications (2025).
   [`strego/biobjective.py`](strego/biobjective.py) is adapted from
   [their implementation](https://github.com/FranciC19/biobj_acquistion_function_for_BO)
-  (Apache License 2.0); the modifications are listed in that file's header.
+  (Apache License 2.0).
 - [BoTorch](https://botorch.org/) and [GPyTorch](https://gpytorch.ai/).
