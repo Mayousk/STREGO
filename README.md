@@ -6,7 +6,7 @@ STREGO alternates a global and a local phase. The global phase selects points fr
 ## Installation
 
 ```bash
-git clone https://github.com/<your-username>/STREGO.git
+git clone https://github.com/Mayousk/STREGO.git
 cd STREGO
 pip install -e .
 ```
