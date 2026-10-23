@@ -160,7 +160,21 @@ Tests: `pytest -q`.
 
 ## Citation
 
+## Citation
 
+If you use STREGO in your research, please cite our paper:
+
+```bibtex
+@misc{diouane2026strego,
+  title         = {{STREGO}: A Scalable Implementation of a Trust-Region Framework for Noisy {B}ayesian Optimization},
+  author        = {Diouane, Youssef and {El Hallaoui}, Issmail and Kadri, Meisseme and Lamghari, Amina},
+  year          = {2026},
+  eprint        = {2610.14338},
+  archivePrefix = {arXiv},
+  primaryClass  = {math.OC},
+  url           = {https://arxiv.org/abs/2610.14338}
+}
+```
 
 ## Acknowledgements
 
