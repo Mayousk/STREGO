@@ -51,6 +51,7 @@ class TrustRegionBO:
     gamma : expansion factor on success (``gamma > 1`` and ``gamma * beta_2 >= 1``.
     kappa : sufficient-decrease threshold.
     d_max : upper bound scaling.
+    d_min : lower bound scaling.
     deterministic : collapse the two failure modes into one (see module docstring).
     """
 
@@ -64,6 +65,8 @@ class TrustRegionBO:
         gamma: float,
         kappa: float,
         d_max: float = 1.0,
+        d_min: float = EPS_MACHINE,
+       
         deterministic: bool = False,
     ):
         if sigma_0 <= 0:
@@ -78,6 +81,9 @@ class TrustRegionBO:
             raise ValueError("kappa must be positive")
         if d_max <= 0:
             raise ValueError("d_max must be positive")
+        if not 0 < d_min <= d_max:
+            raise ValueError("d_min must satisfy 0 < d_min <= d_max")
+   
 
         self.sigma_0 = float(sigma_0)
         self.beta_1 = float(beta_1)
@@ -85,6 +91,7 @@ class TrustRegionBO:
         self.gamma = float(gamma)
         self.kappa = float(kappa)
         self.d_max = float(d_max)
+        self.d_min = float(d_min)
         self.deterministic = bool(deterministic)
 
         
