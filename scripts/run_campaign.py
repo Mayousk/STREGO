@@ -104,7 +104,7 @@ def find_prebuilt_doe(doe_dir: str, func_name: str, dim: int, noise_type: str) -
 
 
 def check_doe_catalog(path: str, dim: int, num_trials: int, n_init: int) -> None:
-     """Check that a DoE catalog can supply every run of the campaign.
+    """Check that a DoE catalog can supply every run of the campaign.
 
     Verifies three things, and raises ValueError on the first that fails:
       - the catalog has `dim` coordinate columns;
