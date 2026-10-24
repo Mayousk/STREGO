@@ -120,6 +120,9 @@ Defaults are the values used for the results in the paper.
 | `beta_2` | 0.5 | hard contraction (certain failure) |
 | `gamma` | 2.0 | expansion on success |
 | `kappa` | 1.0 | sufficient-decrease threshold parameter|
+| `d_min` | machine eps | lower bound scaling |
+| `d_max` | 1.0 | upper bound scaling |
+
 
 
 
@@ -158,7 +161,7 @@ Tests: `pytest -q`.
 
 ---
 
-## Citation
+
 
 ## Citation
 
