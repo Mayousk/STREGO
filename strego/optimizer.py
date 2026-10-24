@@ -29,7 +29,7 @@ from torch.quasirandom import SobolEngine
 from .local_acquisition import NegativePosteriorMean
 from .models import fit_gp
 from .global_selection import select_batch, solve_biobjective
-from .trust_region import OptimizationResult, TrustRegionBO
+from .trust_region import EPS_MACHINE, OptimizationResult, TrustRegionBO
 from .utils import (
     denormalize,
     distance_to_box,
@@ -55,6 +55,7 @@ DEFAULTS: dict = {
     "gamma": 2.0,
     "kappa": 1.0,
     "d_max": 1.0,
+    "d_min": EPS_MACHINE
 }
 
 #Default values used in the article
@@ -135,6 +136,7 @@ class STREGO(TrustRegionBO):
         gamma: float = DEFAULTS["gamma"],
         kappa: float = DEFAULTS["kappa"],
         d_max: float = DEFAULTS["d_max"],
+        d_min: float = DEFAULTS["d_min"],
         deterministic: bool = False,
         doe_points: Optional[np.ndarray] = None,
         doe_values: Optional[np.ndarray] = None,
@@ -200,6 +202,7 @@ class STREGO(TrustRegionBO):
             gamma=gamma,
             kappa=kappa,
             d_max=d_max,
+            d_min=d_min,
             deterministic=deterministic,
         )
 
@@ -283,6 +286,7 @@ class STREGO(TrustRegionBO):
         """Trust-region box around the incumbent, in normalized and raw coords."""
         center_n = np.clip(normalize(self.x_k, self.lower_bounds, self.upper_bounds), 0.0, 1.0)
         radius_n = float(self.d_max * self.sigma_k)
+        radius_inner_n = float(self.d_min * self.sigma_k)
 
         lower_n = np.clip(center_n - radius_n, 0.0, 1.0)
         upper_n = np.clip(center_n + radius_n, 0.0, 1.0)
@@ -290,6 +294,7 @@ class STREGO(TrustRegionBO):
         return {
             "center_n": center_n,
             "radius_n": radius_n,
+            "radius_inner_n": radius_inner_n,
             "lower_n": lower_n,
             "upper_n": upper_n,
             "lower": denormalize(lower_n, self.lower_bounds, self.upper_bounds),
@@ -393,33 +398,52 @@ class STREGO(TrustRegionBO):
             j += 1
 
     def local_phase(self, trust_region: dict) -> tuple[np.ndarray, float]:
-        """Minimize the local GP's posterior mean inside the trust region."""
+        """Minimize the local GP's posterior mean inside the trust region.
+
+        The candidate must satisfy both sides of the trust-region definition,
+        ``sigma_k * d_min <= ||x - x_k||_inf <= sigma_k * d_max``: the upper bound
+        is the box the acquisition is optimized over, the lower bound excludes a
+        small box around the incumbent so the local step cannot degenerate to the
+        point the region is centred on.
+        """
         X_local, y_local = self._gather_local_data(trust_region)
-        # In case we don't have enough data or we reached our maximum budget, the local phase doesn't take place and we retrun the current incumbent.
+        # In case we don't have enough data or we reached our maximum budget, the local phase doesn't take place and we return the current incumbent.
         if X_local.shape[0] < 2 or self._budget_reached():
             return self.x_k.copy(), float(self.f_k)
+
         Xn_local = np.clip(normalize(X_local, self.lower_bounds, self.upper_bounds), 0.0, 1.0)
         model = fit_gp(Xn_local, y_local, self.dim)
         acq = NegativePosteriorMean(model=model)
-        #Extract tbe original trust region's bounds
+
+        # Upper bound: the trust-region box, in the GP's normalized coordinates.
         z_lower = np.clip(trust_region["lower_n"], 0.0, 1.0)
         z_upper = np.clip(trust_region["upper_n"], 0.0, 1.0)
-     
-        z_upper = np.maximum(z_upper, z_lower)
+        # A dimension clipped flat against a domain edge has zero width, and
+        # optimize_acqf rescales the box by 1 / (upper - lower). 1e-9 keeps that
+        # well conditioned; machine epsilon would not.
+        z_upper = np.maximum(z_upper, z_lower + 1e-9)
         bounds_t = torch.stack([
             torch.tensor(z_lower, dtype=torch.float64),
             torch.tensor(z_upper, dtype=torch.float64),
         ])
-         # Pre-screen: score a Sobol pool of local_raw_samples points inside the
+
+        # Lower bound: distance from the incumbent, in the same coordinates.
+        center_n = trust_region["center_n"]
+        radius_inner_n = trust_region["radius_inner_n"]
+
+        def satisfies_lower_bound(xn: np.ndarray) -> bool:
+            """``||xn - x_k||_inf >= sigma_k * d_min``."""
+            return bool(np.max(np.abs(np.asarray(xn, dtype=float) - center_n)) >= radius_inner_n)
+
+        # Pre-screen: score a Sobol pool of local_raw_samples points inside the
         # trust region with the acquisition (-mu) and keep the best
         # local_num_restarts (default 2d + 4) as starting points for L-BFGS.
         # BoTorch's standard procedure would work too (drop
         # batch_initial_conditions and pass raw_samples to optimize_acqf): it
         # scores a similar pool but samples the starts at random, weighted toward
         # high scores, and then discards the pool. We keep our ranked pool so that,
-        # if the optimizer returns an already-evaluated point, we can fall back to
-        # the best unseen point of the pool (see below).
-
+        # if the optimizer returns a point we cannot use, we can fall back to the
+        # best admissible point of the pool (see below).
         pool_unit = SobolEngine(
             dimension=self.dim, scramble=True, seed=self.seed + len(self.X_obs) + 1
         ).draw(self.local_raw_samples).to(torch.float64)
@@ -440,33 +464,39 @@ class STREGO(TrustRegionBO):
         )
 
         lower, upper = trust_region["lower"], trust_region["upper"]
+        candidate_unit = candidate_n.detach().cpu().numpy().reshape(-1)
         x_new = np.clip(
-            denormalize(candidate_n.detach().cpu().numpy().reshape(-1), self.lower_bounds, self.upper_bounds),
-            lower,
-            upper,
+            denormalize(candidate_unit, self.lower_bounds, self.upper_bounds), lower, upper
         )
 
-   
-        if is_close_to_any(x_new, self.X_obs, tol=1e-6):
+        # Reject the candidate if it violates the lower bound (it sits on the
+        # incumbent) or duplicates an evaluated point, which would spend budget on
+        # a value we already know. Both happen once the region has collapsed, so
+        # walk down the ranked pool for the best admissible point instead.
+        if not satisfies_lower_bound(candidate_unit) or is_close_to_any(x_new, self.X_obs, tol=1e-6):
             pool_sorted = pool_t[ranked].cpu().numpy()
             x_new = next(
                 (
                     cand
-                    for cand in (
-                        np.clip(denormalize(c, self.lower_bounds, self.upper_bounds), lower, upper)
+                    for cand, cand_unit in (
+                        (np.clip(denormalize(c, self.lower_bounds, self.upper_bounds), lower, upper), c)
                         for c in pool_sorted
                     )
-                    if not is_close_to_any(cand, self.X_obs, tol=1e-6)
+                    if satisfies_lower_bound(cand_unit)
+                    and not is_close_to_any(cand, self.X_obs, tol=1e-6)
                 ),
                 np.random.uniform(lower, upper),
             )
 
         f_new = self._observe(x_new, phase="local-mean")
 
+        # The trust-region test asks whether the local region holds an improvement
+        # over the incumbent, so an already-evaluated neighbour is a valid answer.
         all_x = np.vstack([X_local, x_new[None, :]])
         all_f = np.concatenate([y_local, [f_new]])
         best = int(np.argmin(all_f))
         return all_x[best], float(all_f[best])
+
 
 
     def run(self) -> OptimizationResult:
