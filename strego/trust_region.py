@@ -81,7 +81,7 @@ class TrustRegionBO:
             raise ValueError("kappa must be positive")
         if d_max <= 0:
             raise ValueError("d_max must be positive")
-        if not 0 < d_min <= d_max:
+        if not 0 <= d_min <= d_max:
             raise ValueError("d_min must satisfy 0 < d_min <= d_max")
    
 
