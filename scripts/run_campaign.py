@@ -163,7 +163,7 @@ def load_doe_trial(path: str, trial: int, expected_dim: int) -> tuple[int, np.nd
 
 
 def detail_log_path(detail_dir: str, func_name: str, dim: int, trial: int) -> str:
-   """Return the path of a run's trace CSV, used both to write it and to find it again on resume."""
+    """Return the path of a run's trace CSV, used both to write it and to find it again on resume."""
     return os.path.join(detail_dir, f"strego_{func_name}_d{dim}_trial{trial}.csv")
 
 
@@ -232,7 +232,7 @@ def summary_row(task: dict, seed: int, best_y: float, n_evaluations: int) -> dic
 
 
 def task_label(task: dict) -> str:
-   """Short name of a run, used in progress and failure messages."""
+    """Short name of a run, used in progress and failure messages."""
     return f"{task['func_name']}_d{task['dim']} trial {task['trial']}"
 
 
