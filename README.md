@@ -2,7 +2,7 @@
  
 **S**calable **TR**ust-region **E**fficient **G**lobal **O**ptimization: trust-region Bayesian optimization for expensive, noisy black-box functions in high dimensions.
  
-STREGO alternates a global and a local phase. The global phase selects points from the Pareto front of the bi-objective problem $\min\,[\mu(x), -\mathrm{IVR}(x)]$, where IVR (integrated variance reduction) replaces the posterior variance, which saturates in high dimensions. The local phase minimizes the posterior mean inside a trust region, and the trust region is updated with a noise-aware rule. Details are in the [paper]((https://arxiv.org/abs/2610.14338)).
+STREGO alternates a global and a local phase. The global phase selects points from the Pareto front of the bi-objective problem $\min\,[\mu(x), -\mathrm{IVR}(x)]$, where IVR (integrated variance reduction) replaces the posterior variance, which saturates in high dimensions. The local phase minimizes the posterior mean inside a trust region, and the trust region is updated with a noise-aware rule. Details are in the [paper]([https://arxiv.org/abs/2610.14338]).
 ## Installation
 
 ```bash
