@@ -176,14 +176,14 @@ def plot(df, out):
         ax.set_xticklabels(names, rotation=20, ha="right")
         ax.set_ylim(-0.05, 1.05)
         ax.grid(alpha=0.3)
-        # Show "20" as "20d" when the panel is a dimension
+      
         title = f"{panel}d" if panel.isdigit() else panel
         ax.set_title(title, fontweight="bold")
 
     axes[0].set_ylabel(r"Normalized $f_{\mathrm{final}}$")
     fig.tight_layout()
 
-    # Explain the lines drawn inside each violin
+   
     legend_lines = [
         Line2D([], [], color="black", linewidth=3.0, label="Median"),
         Line2D([], [], color="black", linewidth=1.0, label="Min / max"),
