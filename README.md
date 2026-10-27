@@ -1,8 +1,24 @@
 # STREGO
  
 **S**calable **TR**ust-region **E**fficient **G**lobal **O**ptimization: trust-region Bayesian optimization for expensive, noisy black-box functions in high dimensions.
+
  
-STREGO alternates a global and a local phase. The global phase selects points from the Pareto front of the bi-objective problem $\min\,[\mu(x), -\mathrm{IVR}(x)]$, where IVR (integrated variance reduction) replaces the posterior variance, which saturates in high dimensions. The local phase minimizes the posterior mean inside a trust region, and the trust region is updated with a noise-aware rule. Details are in the [paper]([https://arxiv.org/abs/2610.14338]).
+STREGO alternates a global and a local phase. The global phase selects points from the Pareto front of the bi-objective problem $\min\,[\mu(x), -\mathrm{IVR}(x)]$, where IVR (integrated variance reduction) replaces the posterior variance, which saturates in high dimensions. The local phase minimizes the posterior mean inside a trust region, and the trust region is updated with a noise-aware rule. Details are in the Details are in the [paper](https://arxiv.org/abs/2610.14338).
+
+## Citation
+
+```bibtex
+@misc{diouane2026strego,
+  title         = {{STREGO}: A Scalable Implementation of a Trust-Region Framework for Noisy {B}ayesian Optimization},
+  author        = {Diouane, Youssef and {El Hallaoui}, Issmail and Kadri, Meisseme and Lamghari, Amina},
+  year          = {2026},
+  eprint        = {2610.14338},
+  archivePrefix = {arXiv},
+  primaryClass  = {math.OC},
+  url           = {https://arxiv.org/abs/2610.14338}
+}
+```
+
 ## Installation
 
 ```bash
@@ -163,21 +179,7 @@ Tests: `pytest -q`.
 
 
 
-## Citation
 
-If you use STREGO in your research, please cite our paper:
-
-```bibtex
-@misc{diouane2026strego,
-  title         = {{STREGO}: A Scalable Implementation of a Trust-Region Framework for Noisy {B}ayesian Optimization},
-  author        = {Diouane, Youssef and {El Hallaoui}, Issmail and Kadri, Meisseme and Lamghari, Amina},
-  year          = {2026},
-  eprint        = {2610.14338},
-  archivePrefix = {arXiv},
-  primaryClass  = {math.OC},
-  url           = {https://arxiv.org/abs/2610.14338}
-}
-```
 
 ## Acknowledgements
 
